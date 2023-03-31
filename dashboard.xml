@@ -1,0 +1,271 @@
+<form version="1.1" theme="light">
+  <label>DDAA/DDAS Projections (With Calc Table)</label>
+  <!-- John Ciavarella 2022 -->
+  <fieldset submitButton="false" autoRun="false"></fieldset>
+  <row>
+    <panel>
+      <html>
+
+
+    <br/>
+      <font size="8" color="green">  
+      <b>Current Configurations </b>
+      </font>
+                    <h1>Current Sizing</h1>
+        <i>This dashboard helps give you an overview of your current Splunk Cloud environment, usage and future projections on storage based on that information.</i>
+        <ul>
+          <li>
+            <b>Index</b> - Your Splunk index</li>
+          <li>
+            <b>DDAS Retention</b> - This is your currently configured DDAS (Searchable) storage.</li>
+          <li>
+            <b>DDAA Retention</b> - This is your currently configured DDAA (Archived) storage.</li>
+          <li>
+            <b>Index Usage</b> - What this specific index is currently utilizing today in DDAA (searchable)</li>
+          <li>
+            <b>30 Day Data</b> - This is the total of 30 days of ingestion for this index.</li>
+          <li>
+            <b>Daily Ingest</b> - This is the DAILY ingest for this index</li>
+          <li>
+            <b>Projected DDAS</b> - We calculate based on your 30 day rolling average of ingestion, how much DDAS storage you will need based on your current DDAS retention settings. </li>
+          <li>
+            <b>Projected DDAA</b> - We calculate based on your 30 day rolling average of ingestion, how much DDAA storage you will need based on your current DDAA retention settings. </li>
+        </ul>
+  </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <input type="radio" token="internal">
+        <label>Show internal indexes</label>
+        <choice value="true">True</choice>
+        <choice value="| search NOT Index=_*">False</choice>
+        <search>
+          <query>|makeresults</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <initialValue>| search NOT Index=_*</initialValue>
+        <fieldForLabel>a</fieldForLabel>
+        <fieldForValue>a</fieldForValue>
+      </input>
+      <input type="radio" token="show_blocks">
+        <label>Show storage blocks</label>
+        <choice value="| eval blocks_ddas=projected_ddas_storage_gb/500 | eval blocks_ddas=round(if(blocks_ddas&gt;0, if(blocks_ddas&gt;1, blocks_ddas, 1), &quot;f&quot;),0) | eval blocks_ddaa=projected_ddaa_storage_gb/500 | eval blocks_ddaa=round(if(blocks_ddaa&gt;0, if(blocks_ddaa&gt;1, blocks_ddaa, 1), &quot;f&quot;),0)">True</choice>
+        <choice value="">False</choice>
+        <search>
+          <query>|makeresults</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <fieldForLabel>a</fieldForLabel>
+        <fieldForValue>a</fieldForValue>
+        <default></default>
+      </input>
+      <table>
+        <search>
+          <query>| rest timeout=600 splunk_server=local /services/data/distributed-indexes
+
+| fields title datatype maxTotalDataSizeMB frozenTimePeriodInSecs minTime coldPath.maxDataSizeMB homePath.maxDataSizeMB, homePath, coldPath, cold_bucket_size, total_size, total_bucket_count, totalEventCount, archiver.coldStorageRetentionPeriod, archiver.enableDataArchive rawSizeBytes
+| eval disk_usage_gb = if(isnotnull(rawSizeBytes), round(rawSizeBytes/1024/1024/1024, 2), 0)
+| eval frozenTimePeriodDay = round(frozenTimePeriodInSecs / 86400, 0)
+| eval frozenTimePeriodDay = if(isnull(frozenTimePeriodDay) OR frozenTimePeriodDay == 0, "unlimited", frozenTimePeriodDay)
+| fields title, disk_usage_gb, total_bucket_count, totalEventCount, currentDBSizeGB, frozenTimePeriodDay, archiver.coldStorageRetentionPeriod archiver.enableDataArchive 
+| rename title as Index, disk_usage_gb as "Index Usage (GB)",totalEventCount as "Total Event Count"
+
+
+| join type=outer Index [ search earliest=-30d
+index=_internal source=*license_usage.log type=Usage|stats sum(b) as Bytes by  idx st 
+|eval GB=round(Bytes/1024/1024/1024,3)
+| rename idx as Index | rename st as sourcetype
+ | stats sum(GB) as ingested_gb_30day by Index
+]
+
+
+```show projected DDAS requirements as per current retention settings```
+| eval projected_ddas_storage_gb='ingested_gb_30day'/30*'frozenTimePeriodDay'
+| eval ddaa_days='archiver.coldStorageRetentionPeriod'-frozenTimePeriodDay
+| eval  projected_ddaa_storage_gb='ingested_gb_30day'/30*'ddaa_days'
+```show DDAA/DDAS blocks```
+```| eval blocks_ddas=round(projected_ddas_storage_gb/500,0) | eval blocks_ddaa=round(projected_ddaa_storage_gb/500,0)```
+$show_blocks$
+| eval  daily_ingest='ingested_gb_30day'/30
+
+| rename frozenTimePeriodDay as "DDAS Retention (Searchable)"
+| rename ingested_gb_30day as  "30 day data (GB)" 
+| rename archiver.coldStorageRetentionPeriod as "DDAA Retention (Archive)"
+| rename daily_ingest as "Daily Ingest (GB)" 
+
+| fields Index  "DDAS Retention (Searchable)" "DDAA Retention (Archive)"  "Index Usage (GB)" "30 day data (GB)" "Daily Ingest (GB)"  projected_ddas_storage_gb, projected_ddaa_storage_gb
+```| addcoltotals *gb*```
+$internal$
+$show_blocks$</query>
+          <earliest>-30d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <format type="number" field="projected_ddas_storage_gb">
+          <option name="precision">3</option>
+        </format>
+        <format type="color" field="DDAA Retention (Days)">
+          <colorPalette type="map"></colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <br/>
+      <font size="8" color="green">  
+      <b>Calculators</b>  
+      </font>
+   
+        <h1>DDAA/DDAS Forecasting Tool </h1>
+        <i>This panel is a calculator to help understand by index if you change your DDAA or DDAS retention settings, how much data would be needed in both locations.</i>
+
+  </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <search>
+          <query>| rest timeout=600 splunk_server=local /services/data/distributed-indexes
+
+| fields title datatype maxTotalDataSizeMB frozenTimePeriodInSecs minTime coldPath.maxDataSizeMB homePath.maxDataSizeMB, homePath, coldPath, cold_bucket_size, total_size, total_bucket_count, totalEventCount, archiver.coldStorageRetentionPeriod, archiver.enableDataArchive rawSizeBytes
+| eval disk_usage_gb = if(isnotnull(rawSizeBytes), round(rawSizeBytes/1024/1024/1024, 2), 0)
+| eval frozenTimePeriodDay = round(frozenTimePeriodInSecs / 86400, 0)
+| eval frozenTimePeriodDay = if(isnull(frozenTimePeriodDay) OR frozenTimePeriodDay == 0, "unlimited", frozenTimePeriodDay)
+| fields title, disk_usage_gb, total_bucket_count, totalEventCount, currentDBSizeGB, frozenTimePeriodDay, archiver.coldStorageRetentionPeriod archiver.enableDataArchive 
+| rename title as Index, disk_usage_gb as "Index Usage (GB)",totalEventCount as "Total Event Count"
+
+
+| join type=outer Index [ search earliest=-30d
+index=_internal source=*license_usage.log type=Usage|stats sum(b) as Bytes by  idx st 
+|eval GB=round(Bytes/1024/1024/1024,3)
+| rename idx as Index | rename st as sourcetype
+ | stats sum(GB) as ingested_gb_30day by Index
+]
+
+
+```THIS IS THE JOIN STATEMENT```
+| join type=left Index [  inputlookup ddaX_retention.csv
+| dedup  selected_index sortby - modtime
+| fields selected_index hot_retention cold_retention indexusage projectedddass projectedddaa
+| rename hot_retention AS frozenTimePeriodDay cold_retention AS archiver.coldStorageRetentionPeriod selected_index AS Index
+]
+```THIS IS THE JOIN STATEMENT```
+
+
+```show projected DDAS requirements as per current retention settings```
+| eval projected_ddas_storage_gb='ingested_gb_30day'/30*'frozenTimePeriodDay'
+| eval ddaa_days='archiver.coldStorageRetentionPeriod'-frozenTimePeriodDay
+| eval  projected_ddaa_storage_gb='ingested_gb_30day'/30*'ddaa_days'
+```show DDAA/DDAS blocks```
+```| eval blocks_ddas=round(projected_ddas_storage_gb/500,0) | eval blocks_ddaa=round(projected_ddaa_storage_gb/500,0)```
+$show_blocks$
+| eval  daily_ingest='ingested_gb_30day'/30
+
+
+
+
+| rename frozenTimePeriodDay as "DDAS Retention (Searchable)"
+| rename ingested_gb_30day as  "30 day data (GB)" 
+| rename archiver.coldStorageRetentionPeriod as "DDAA Retention (Archive)"
+| rename daily_ingest as "Daily Ingest (GB)" 
+
+
+```this is to just force the reload```
+| eval just_to_churn=$hot_retention$ | eval just_to_churn2=$cold_retention$ 
+
+| fields Index  "DDAS Retention (Searchable)" "DDAA Retention (Archive)"  "Index Usage (GB)" "30 day data (GB)" "Daily Ingest (GB)"  projected_ddas_storage_gb, projected_ddaa_storage_gb
+
+$internal$
+$show_blocks$
+
+| addcoltotals</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">15</option>
+        <option name="drilldown">none</option>
+        <format type="number" field="projected_ddaa_storage_gb">
+          <option name="precision">3</option>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Projected Storage Needs</title>
+      <input type="dropdown" token="index_projection" searchWhenChanged="true">
+        <label>Index</label>
+        <fieldForLabel>index</fieldForLabel>
+        <fieldForValue>index</fieldForValue>
+        <search>
+          <query>| rest /services/data/indexes | fields id | rex field=id "(?&lt;index&gt;[^\/]+$)" | dedup index | fields index</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+      </input>
+      <input type="text" token="hot_retention" searchWhenChanged="true">
+        <label>Days retention Searchable (DDAS)</label>
+        <default>30</default>
+      </input>
+      <input type="text" token="cold_retention" searchWhenChanged="true">
+        <label>Days retention Archive (DDAA)</label>
+        <default>90</default>
+        <initialValue>90</initialValue>
+      </input>
+      <single>
+        <title>DDAS  (GB)</title>
+        <search>
+          <query>earliest=-30d
+index=_internal source=*license_usage.log type=Usage idx=$index_projection$ 
+|stats sum(b) as Bytes by  idx st 
+|eval GB=round(Bytes/1024/1024/1024,3)
+| rename idx as Index | rename st as sourcetype
+| stats sum(GB) as ingested_gb_30day
+
+| eval dailygb=ingested_gb_30day/30
+| eval ddas=$hot_retention$*dailygb
+
+| eval selected_index=$index_projection|s$ | eval hot_retention=$hot_retention$ | eval cold_retention=$cold_retention$ | eval modtime=now()
+| fields  ddas modtime selected_index ingested_gb_30day cold_retention hot_retention dailygb 
+| outputlookup append=true ddaX_retention.csv</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="unit">gb</option>
+      </single>
+      <single>
+        <title>DDAA  (GB)</title>
+        <search>
+          <query>index=_internal source=*license_usage.log type=Usage idx=$index_projection$ 
+|stats sum(b) as Bytes by  idx st 
+|eval GB=round(Bytes/1024/1024/1024,3)
+| rename idx as Index | rename st as sourcetype
+| stats sum(GB) as ingested_gb_30day
+
+| eval dailygb=ingested_gb_30day/30
+| eval cold=$cold_retention$-$hot_retention$
+| eval ddas=cold*dailygb
+| fields ddas</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="unit">gb</option>
+      </single>
+    </panel>
+  </row>
+</form>
