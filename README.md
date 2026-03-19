@@ -1,11 +1,15 @@
-# Splunk DDAS/DDAA Cloud Storage Forecaster 
+# Splunk DDAS/DDAA Cloud Storage Forecaster
 
-Useful tool to forecast storage needs in Splunk cloud for DDAA DDAS 
+A Splunk dashboard tool for forecasting storage requirements in Splunk Cloud for DDAA and DDAS deployments. Helps capacity planning by projecting storage needs based on current ingestion rates and retention policies.
+
+---
+
+# Archive
 
 ![Dashboard Screenshot](https://github.com/johnciavarella/splunk-cloud-storage-calculator/blob/main/Screenshot.png)
 
-# Install 
+# Install
 
-Just copy and paste the XML contents into a dashboard on your Splunk Cloud Instance 
+Just copy and paste the XML contents into a dashboard on your Splunk Cloud Instance
 
-🛑The DDAS (Single Value) panel will complain about security risks. This is due to it writing the values from the calculator into a lookup. Accept this warning. 
+🛑The DDAS (Single Value) panel will complain about security risks. This is due to it writing the values from the calculator into a lookup. Accept this warning.
